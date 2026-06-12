@@ -1,0 +1,17 @@
+name: PR Guardian
+description: AI-powered PR code review with production risk analysis
+url: https://github.com/ertaneker/pr-guardian
+hook_attributes:
+  url: https://prguardian.dev/api/webhooks/github
+  active: false
+redirect_url: https://github.com/ertaneker/pr-guardian
+public: true
+default_events:
+  - pull_request
+  - check_suite
+default_permissions:
+  contents: read
+  pull_requests: write
+  checks: write
+  issues: write
+  metadata: read
