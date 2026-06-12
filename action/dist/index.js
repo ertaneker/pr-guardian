@@ -35882,7 +35882,7 @@ function formatFinding(f) {
 function formatComment(result, threshold) {
     const lines = [];
     const passed = result.risk_score <= threshold;
-    lines.push(`## ${riskEmoji(result.risk_score)} PR Guardian Report`);
+    lines.push(`## ${riskEmoji(result.risk_score)} PR Shield Report`);
     lines.push('');
     lines.push(`**Risk Score: ${result.risk_score}/10** — ${riskLabel(result.risk_score)} ${passed ? '✅' : '❌'}`);
     lines.push(`> Threshold: ${threshold}/10`);
@@ -35949,7 +35949,7 @@ function formatComment(result, threshold) {
     const analysisTime = result.analysis_time_ms
         ? `${(result.analysis_time_ms / 1000).toFixed(1)}s`
         : 'N/A';
-    lines.push(`<sub>🤖 Powered by [PR Guardian](https://github.com/ertaneker/pr-guardian) — ${result.model || 'AI'} · ${result.tokens_used || 0} tokens · ${analysisTime}</sub>`);
+    lines.push(`<sub>🤖 Powered by [PR Shield](https://github.com/ertaneker/pr-guardian) — ${result.model || 'AI'} · ${result.tokens_used || 0} tokens · ${analysisTime}</sub>`);
     return lines.join('\n');
 }
 function formatCheckRunSummary(result) {
@@ -36098,6 +36098,7 @@ const github = __importStar(__nccwpck_require__(3228));
 const diff_parser_1 = __nccwpck_require__(6290);
 const ai_client_1 = __nccwpck_require__(5801);
 const comment_formatter_1 = __nccwpck_require__(8273);
+const production_checker_1 = __nccwpck_require__(2357);
 async function run() {
     try {
         const githubToken = core.getInput('github_token', { required: true });
@@ -36112,7 +36113,7 @@ async function run() {
             core.setFailed('This action must be run on a pull_request event.');
             return;
         }
-        core.info(`PR Guardian analyzing PR #${prNumber} in ${owner}/${repo}...`);
+        core.info(`PR Shield analyzing PR #${prNumber} in ${owner}/${repo}...`);
         // Fetch PR diff
         const response = await octokit.rest.pulls.get({
             owner,
@@ -36129,8 +36130,21 @@ async function run() {
         const patterns = excludePatterns.split(',').map((p) => p.trim());
         const chunks = (0, diff_parser_1.parseDiff)(diff, patterns, maxDiffSizeKB * 1024);
         core.info(`Parsed ${chunks.length} file(s) from diff`);
+        // Run deterministic production safety checks
+        const prodChecks = (0, production_checker_1.runProductionChecks)(chunks);
+        if (prodChecks.allFindings.length > 0) {
+            core.info(`Production checks: ${prodChecks.allFindings.length} findings (${prodChecks.migrationFindings.length} migration, ${prodChecks.apiContractFindings.length} API contract, ${prodChecks.configDriftFindings.length} config drift, ${prodChecks.dependencyFindings.length} dependency)`);
+        }
         // Analyze with AI
         const results = await (0, ai_client_1.analyzeDiff)(chunks, deepseekApiKey, github.context.payload.pull_request);
+        // Merge deterministic findings with AI findings (deterministic first)
+        results.findings = [...prodChecks.allFindings, ...results.findings];
+        // Adjust risk score with deterministic contribution
+        results.risk_score = Math.min(10, results.risk_score + prodChecks.riskContribution);
+        const criticalCount = results.findings.filter(f => f.severity === 'critical').length;
+        const warnCount = results.findings.filter(f => f.severity === 'warning').length;
+        const infoCount = results.findings.filter(f => f.severity === 'info').length;
+        core.info(`Total findings: ${results.findings.length} (${criticalCount} critical + ${warnCount} warnings + ${infoCount} info) [${prodChecks.allFindings.length} deterministic + AI]`);
         // Post comment on PR
         const commentBody = (0, comment_formatter_1.formatComment)(results, riskThreshold);
         await octokit.rest.issues.createComment({
@@ -36148,33 +36162,352 @@ async function run() {
         const passed = results.risk_score <= riskThreshold;
         core.info(`Risk Score: ${results.risk_score}/10 (threshold: ${riskThreshold}) — ${passed ? 'PASSED ✅' : 'FAILED ❌'}`);
         if (passed) {
-            core.info('PR Guardian: Risk score within threshold.');
+            core.info('PR Shield: Risk score within threshold.');
         }
         else {
-            core.warning(`PR Guardian: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review findings before merging.`);
+            core.warning(`PR Shield: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review findings before merging.`);
         }
     }
     catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         // Categorize errors
         if (message.includes('ENOTFOUND') || message.includes('ECONNREFUSED')) {
-            core.setFailed(`PR Guardian: Network error — cannot reach API. Check your network connection. (${message})`);
+            core.setFailed(`PR Shield: Network error — cannot reach API. Check your network connection. (${message})`);
         }
         else if (message.includes('401') || message.includes('403') || message.includes('auth')) {
-            core.setFailed(`PR Guardian: Authentication failed — invalid API key. Check your DEEPSEEK_API_KEY. (${message})`);
+            core.setFailed(`PR Shield: Authentication failed — invalid API key. Check your DEEPSEEK_API_KEY. (${message})`);
         }
         else if (message.includes('429') || message.includes('rate')) {
-            core.setFailed(`PR Guardian: Rate limited by AI provider. Please wait and re-run. (${message})`);
+            core.setFailed(`PR Shield: Rate limited by AI provider. Please wait and re-run. (${message})`);
         }
         else if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
-            core.setFailed(`PR Guardian: Request timed out. The diff may be too large or the API is slow. (${message})`);
+            core.setFailed(`PR Shield: Request timed out. The diff may be too large or the API is slow. (${message})`);
         }
         else {
-            core.setFailed(`PR Guardian failed: ${message}`);
+            core.setFailed(`PR Shield failed: ${message}`);
         }
     }
 }
 run();
+
+
+/***/ }),
+
+/***/ 2357:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * Production Breaking Change Detection Engine
+ *
+ * Deterministic rule-based checks that run alongside AI analysis.
+ * These catch what AI might miss — the PR Shield USP layer.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.checkMigrationChanges = checkMigrationChanges;
+exports.checkApiContractBreaks = checkApiContractBreaks;
+exports.checkConfigDrift = checkConfigDrift;
+exports.checkDependencyConflicts = checkDependencyConflicts;
+exports.runProductionChecks = runProductionChecks;
+// --- Migration Detection ---
+const MIGRATION_PATTERNS = {
+    prisma: {
+        schemaPatterns: [/prisma\/schema\.prisma$/],
+        migrationPaths: ['prisma/migrations/'],
+        framework: 'Prisma',
+    },
+    typeorm: {
+        schemaPatterns: [/\.entity\.ts$/],
+        migrationPaths: ['migrations/', 'src/migrations/', 'db/migrations/'],
+        framework: 'TypeORM',
+    },
+    django: {
+        schemaPatterns: [/models\.py$/],
+        migrationPaths: ['migrations/'],
+        framework: 'Django',
+    },
+    rails: {
+        schemaPatterns: [/db\/schema\.rb$/, /db\/migrate\/.+\.rb$/],
+        migrationPaths: ['db/migrate/'],
+        framework: 'Rails',
+    },
+    golang: {
+        schemaPatterns: [/-migration\.go$/, /migration_.+\.go$/],
+        migrationPaths: ['migrations/', 'db/migrations/'],
+        framework: 'Go Migrations',
+    },
+    flyway: {
+        schemaPatterns: [/\.sql$/],
+        migrationPaths: ['db/migration/', 'sql/', 'migrations/'],
+        framework: 'Flyway/SQL',
+    },
+    knex: {
+        schemaPatterns: [/knexfile\./, /migration.*\.ts$/, /migration.*\.js$/],
+        migrationPaths: ['migrations/'],
+        framework: 'Knex',
+    },
+};
+const ALL_MIGRATION_PATTERNS = Object.values(MIGRATION_PATTERNS);
+function checkMigrationChanges(chunks) {
+    const findings = [];
+    // Find schema/model changes
+    const schemaChanges = chunks.filter((c) => ALL_MIGRATION_PATTERNS.some((p) => p.schemaPatterns.some((r) => r.test(c.filename))));
+    if (schemaChanges.length === 0)
+        return findings;
+    // Find migration files in the same PR
+    const migrationFiles = chunks.filter((c) => ALL_MIGRATION_PATTERNS.some((p) => p.migrationPaths.some((path) => c.filename.includes(path))));
+    for (const schemaChange of schemaChanges) {
+        // Determine which framework
+        const matchedFramework = ALL_MIGRATION_PATTERNS.find((p) => p.schemaPatterns.some((r) => r.test(schemaChange.filename)));
+        if (matchedFramework && migrationFiles.length === 0) {
+            findings.push({
+                severity: 'critical',
+                file: schemaChange.filename,
+                line: 1,
+                category: 'bug',
+                title: `Schema change detected without migration file (${matchedFramework.framework})`,
+                description: `This PR modifies ${schemaChange.filename} which appears to be a database schema/model file. However, no corresponding migration file was found in the PR. Deploying this without a migration will cause schema drift between code and database.`,
+                suggestion: `Add a migration file in ${matchedFramework.migrationPaths.join(' or ')} that reflects the schema changes in this PR.`,
+                confidence: 90,
+            });
+        }
+    }
+    return findings;
+}
+// --- API Contract Break Detection ---
+const API_CONTRACT_PATTERNS = [
+    // TypeScript interfaces / types used in API responses
+    /\.types?\.ts$/,
+    /\.dto\.ts$/,
+    /\.schema\.ts$/,
+    /-response\.ts$/,
+    /-request\.ts$/,
+    // GraphQL schemas
+    /schema\.graphql$/,
+    /\.graphql$/,
+    // OpenAPI / Swagger
+    /openapi\.ya?ml$/,
+    /swagger\.ya?ml$/,
+    // Protobuf
+    /\.proto$/,
+    // JSON Schema
+    /\.schema\.json$/,
+];
+const BREAKING_CHANGE_INDICATORS = [
+    // Removed fields (line starts with - and contains a field definition)
+    { pattern: /^-\s*(readonly\s+)?(\w+)\??\s*:\s*.+/, type: 'removed_field' },
+    { pattern: /^-\s*(\w+)\s*\(.*\)\s*:\s*.+/, type: 'removed_method' },
+    // Required added (optional → required)
+    { pattern: /^\+\s*(readonly\s+)?(\w+)\s*:\s*(?!.*\?)/, type: 'new_required_field' },
+];
+function checkApiContractBreaks(chunks) {
+    const findings = [];
+    const apiFiles = chunks.filter((c) => API_CONTRACT_PATTERNS.some((p) => p.test(c.filename)));
+    if (apiFiles.length === 0)
+        return findings;
+    for (const file of apiFiles) {
+        const lines = file.patch.split('\n');
+        for (const line of lines) {
+            for (const indicator of BREAKING_CHANGE_INDICATORS) {
+                if (indicator.pattern.test(line)) {
+                    const severity = indicator.type === 'removed_field' || indicator.type === 'removed_method'
+                        ? 'critical'
+                        : 'warning';
+                    const descriptions = {
+                        removed_field: `A field appears to have been removed from \`${file.filename}\`. Clients depending on this field will break.`,
+                        removed_method: `A method appears to have been removed from \`${file.filename}\`. Clients calling this method will break.`,
+                        new_required_field: `A new required field appears to have been added to \`${file.filename}\`. Existing clients that don't send this field may break.`,
+                    };
+                    findings.push({
+                        severity,
+                        file: file.filename,
+                        line: lines.indexOf(line) + 1,
+                        category: 'bug',
+                        title: `API Contract Break: ${indicator.type.replace(/_/g, ' ')}`,
+                        description: descriptions[indicator.type] || `API contract change detected in ${file.filename}`,
+                        suggestion: 'Verify that all API consumers are compatible with this change. Consider versioning the API or adding a deprecation period.',
+                        confidence: 70,
+                    });
+                }
+            }
+        }
+    }
+    return findings;
+}
+// --- Config Drift Detection ---
+const CONFIG_FILE_PAIRS = [
+    // .env → .env.example
+    [/\.env$/, /\.env\.example$/],
+    // config.ts → config.example.ts
+    [/config\.(ts|js|json|ya?ml)$/, /config\.example\.(ts|js|json|ya?ml)$/],
+    // docker-compose → docker-compose.example
+    [/docker-compose\.ya?ml$/, /docker-compose\.example\.ya?ml$/],
+];
+function checkConfigDrift(chunks) {
+    const findings = [];
+    for (const [configPattern, examplePattern] of CONFIG_FILE_PAIRS) {
+        const configFile = chunks.find((c) => configPattern.test(c.filename));
+        const exampleFile = chunks.find((c) => examplePattern.test(c.filename));
+        // Config changed but example wasn't updated
+        if (configFile && !exampleFile) {
+            // Extract new env vars from the config change
+            const newVars = extractNewEnvVars(configFile.patch);
+            findings.push({
+                severity: 'warning',
+                file: configFile.filename,
+                line: 1,
+                category: 'architecture',
+                title: 'Config file changed without updating example file',
+                description: `\`${configFile.filename}\` was modified but no corresponding change was found for its example file. Team members won't know about the new configuration requirements.${newVars.length > 0 ? `\n\nNew variables detected: \`${newVars.join('`, `')}\`` : ''}`,
+                suggestion: `Update the corresponding example config file with the new variables and safe defaults.`,
+                confidence: 85,
+            });
+        }
+    }
+    return findings;
+}
+function extractNewEnvVars(patch) {
+    const vars = [];
+    const lines = patch.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+            const match = line.match(/^\+[^=]*?(\w+)\s*=\s*/);
+            if (match && match[1]) {
+                vars.push(match[1]);
+            }
+        }
+    }
+    return [...new Set(vars)];
+}
+// --- Dependency Breaking Change Detection ---
+const DEPENDENCY_FILES = [
+    {
+        path: 'package.json',
+        dependencySection: /"dependencies"\s*:\s*\{([^}]+)\}/,
+        versionExtractor: /"([^"]+)":\s*"([^"]+)"/g,
+    },
+    {
+        path: 'pyproject.toml',
+        dependencySection: /dependencies\s*=\s*\[([^\]]+)\]/,
+        versionExtractor: /"([^"]+)\s*([><=!^~]+.*?)"/g,
+    },
+    {
+        path: 'go.mod',
+        dependencySection: /require\s*\(([^)]+)\)/,
+        versionExtractor: /(\S+)\s+(v[\d.]+)/g,
+    },
+    {
+        path: 'Cargo.toml',
+        dependencySection: /\[dependencies\]([\s\S]*?)(?:\[|$)/,
+        versionExtractor: /(\w+)\s*=\s*"([^"]+)"/g,
+    },
+    {
+        path: 'Gemfile',
+        dependencySection: /gem\s+['"](\w+)['"]\s*,\s*['"]([^'"]+)['"]/g,
+        versionExtractor: /gem\s+['"](\w+)['"]\s*,\s*['"]([^'"]+)['"]/g,
+    },
+];
+function isMajorVersionBump(oldVer, newVer) {
+    const extract = (v) => {
+        const match = v.match(/[v^~>=<\s]*(\d+)\.(\d+)(?:\.(\d+))?/);
+        if (!match)
+            return null;
+        return {
+            major: parseInt(match[1] || '0'),
+            minor: parseInt(match[2] || '0'),
+            patch: parseInt(match[3] || '0'),
+        };
+    };
+    const oldV = extract(oldVer);
+    const newV = extract(newVer);
+    if (!oldV || !newV)
+        return false;
+    return newV.major > oldV.major;
+}
+function checkDependencyConflicts(chunks) {
+    const findings = [];
+    for (const depFile of DEPENDENCY_FILES) {
+        const chunk = chunks.find((c) => c.filename === depFile.path);
+        if (!chunk)
+            continue;
+        const lines = chunk.patch.split('\n');
+        const changes = [];
+        for (const line of lines) {
+            if (line.startsWith('-') && !line.startsWith('---')) {
+                const clean = line.substring(1);
+                const match = depFile.versionExtractor.exec(clean);
+                // Need to handle differently per format
+                // Generic approach: look for version changes
+            }
+            // Simpler approach: compare - and + lines for the same dependency
+            const depMatch = line.match(/"([^"]+)":\s*"([^"]+)"/);
+            if (depMatch) {
+                const name = depMatch[1] || '';
+                const version = depMatch[2] || '';
+                if (line.startsWith('-') && !line.startsWith('---')) {
+                    // Find corresponding + line
+                    const addLine = lines.find((l) => l.startsWith('+') &&
+                        !l.startsWith('+++') &&
+                        l.includes(`"${name}"`));
+                    if (addLine) {
+                        const addMatch = addLine.match(/"([^"]+)":\s*"([^"]+)"/);
+                        if (addMatch && addMatch[2]) {
+                            changes.push({ name, oldVer: version, newVer: addMatch[2] });
+                        }
+                    }
+                }
+            }
+        }
+        // Reset regex lastIndex
+        depFile.versionExtractor.lastIndex = 0;
+        for (const change of changes) {
+            if (isMajorVersionBump(change.oldVer, change.newVer)) {
+                findings.push({
+                    severity: 'warning',
+                    file: depFile.path,
+                    line: 1,
+                    category: 'architecture',
+                    title: `Major version bump: ${change.name} (${change.oldVer} → ${change.newVer})`,
+                    description: `${change.name} is being upgraded from ${change.oldVer} to ${change.newVer}. This is a MAJOR version change which likely includes breaking API changes, removed features, or changed behavior.`,
+                    suggestion: `Review the ${change.name} changelog for breaking changes. Test thoroughly before deploying.`,
+                    confidence: 80,
+                });
+            }
+        }
+    }
+    return findings;
+}
+function runProductionChecks(chunks) {
+    const migrationFindings = checkMigrationChanges(chunks);
+    const apiContractFindings = checkApiContractBreaks(chunks);
+    const configDriftFindings = checkConfigDrift(chunks);
+    const dependencyFindings = checkDependencyConflicts(chunks);
+    const allFindings = [
+        ...migrationFindings,
+        ...apiContractFindings,
+        ...configDriftFindings,
+        ...dependencyFindings,
+    ];
+    // Calculate risk contribution (0-3)
+    let riskContribution = 0;
+    if (migrationFindings.length > 0)
+        riskContribution += 2;
+    if (apiContractFindings.length > 0)
+        riskContribution += 1;
+    if (configDriftFindings.length > 0)
+        riskContribution += 0.5;
+    if (dependencyFindings.length > 0)
+        riskContribution += 0.5;
+    return {
+        migrationFindings,
+        apiContractFindings,
+        configDriftFindings,
+        dependencyFindings,
+        allFindings,
+        riskContribution: Math.min(3, Math.round(riskContribution)),
+    };
+}
 
 
 /***/ }),
@@ -36184,12 +36517,12 @@ run();
 
 "use strict";
 
-// Prompt templates for PR Guardian — optimized for DeepSeek V3
+// Prompt templates for PR Shield — optimized for DeepSeek V3
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LANGUAGE_SPECIFIC_RULES = exports.FEW_SHOT_EXAMPLE = exports.SYSTEM_PROMPT = void 0;
 exports.buildLanguageContext = buildLanguageContext;
 exports.buildUserPrompt = buildUserPrompt;
-exports.SYSTEM_PROMPT = `You are PR Guardian, a senior software engineer specialized in production safety.
+exports.SYSTEM_PROMPT = `You are PR Shield, a senior software engineer specialized in production safety.
 Your mission: identify what could break in production if this PR is merged.
 
 ANALYSIS CATEGORIES (check each):

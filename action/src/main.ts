@@ -3,6 +3,7 @@ import * as github from '@actions/github';
 import { parseDiff } from './diff-parser';
 import { analyzeDiff } from './ai-client';
 import { formatComment, formatCheckRunSummary } from './comment-formatter';
+import { runProductionChecks } from './production-checker';
 
 async function run(): Promise<void> {
   try {
@@ -44,8 +45,26 @@ async function run(): Promise<void> {
 
     core.info(`Parsed ${chunks.length} file(s) from diff`);
 
+    // Run deterministic production safety checks
+    const prodChecks = runProductionChecks(chunks);
+    if (prodChecks.allFindings.length > 0) {
+      core.info(`Production checks: ${prodChecks.allFindings.length} findings (${prodChecks.migrationFindings.length} migration, ${prodChecks.apiContractFindings.length} API contract, ${prodChecks.configDriftFindings.length} config drift, ${prodChecks.dependencyFindings.length} dependency)`);
+    }
+
     // Analyze with AI
     const results = await analyzeDiff(chunks, deepseekApiKey, github.context.payload.pull_request);
+
+    // Merge deterministic findings with AI findings (deterministic first)
+    results.findings = [...prodChecks.allFindings, ...results.findings];
+
+    // Adjust risk score with deterministic contribution
+    results.risk_score = Math.min(10, results.risk_score + prodChecks.riskContribution);
+
+    const criticalCount = results.findings.filter(f => f.severity === 'critical').length;
+    const warnCount = results.findings.filter(f => f.severity === 'warning').length;
+    const infoCount = results.findings.filter(f => f.severity === 'info').length;
+
+    core.info(`Total findings: ${results.findings.length} (${criticalCount} critical + ${warnCount} warnings + ${infoCount} info) [${prodChecks.allFindings.length} deterministic + AI]`);
 
     // Post comment on PR
     const commentBody = formatComment(results, riskThreshold);
