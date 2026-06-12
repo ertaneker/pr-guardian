@@ -44,3 +44,6 @@ temp/
 
 # AI / LLM
 .cache/
+
+*.pem
+*.private-key.*
