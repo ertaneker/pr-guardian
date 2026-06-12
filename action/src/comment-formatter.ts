@@ -119,7 +119,10 @@ export function formatComment(result: AnalysisResult, threshold: number): string
 
   lines.push('---');
   lines.push('');
-  lines.push('<sub>🤖 Powered by [PR Guardian](https://github.com/ertaneker/pr-guardian) — AI code review for production safety</sub>');
+  const analysisTime = result.analysis_time_ms
+    ? `${(result.analysis_time_ms / 1000).toFixed(1)}s`
+    : 'N/A';
+  lines.push(`<sub>🤖 Powered by [PR Guardian](https://github.com/ertaneker/pr-guardian) — ${result.model || 'AI'} · ${result.tokens_used || 0} tokens · ${analysisTime}</sub>`);
 
   return lines.join('\n');
 }

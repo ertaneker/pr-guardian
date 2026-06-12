@@ -56,21 +56,36 @@ async function run(): Promise<void> {
       body: commentBody,
     });
 
+    // Log analysis stats
+    core.info(`Model: ${results.model}`);
+    core.info(`Tokens: ${results.tokens_used}`);
+    core.info(`Time: ${(results.analysis_time_ms / 1000).toFixed(1)}s`);
+    core.info(`Findings: ${results.findings.length} (${results.findings.filter(f => f.severity === 'critical').length} critical, ${results.findings.filter(f => f.severity === 'warning').length} warnings, ${results.findings.filter(f => f.severity === 'info').length} info)`);
+
     // Update check run status
     const passed = results.risk_score <= riskThreshold;
-    core.info(`Risk Score: ${results.risk_score}/10 — ${passed ? 'PASSED' : 'FAILED'}`);
+    core.info(`Risk Score: ${results.risk_score}/10 (threshold: ${riskThreshold}) — ${passed ? 'PASSED ✅' : 'FAILED ❌'}`);
 
     if (passed) {
-      core.info('PR Guardian: Risk score within threshold. ✅');
+      core.info('PR Guardian: Risk score within threshold.');
     } else {
-      core.warning(`PR Guardian: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review the findings above.`);
+      core.warning(`PR Guardian: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review findings before merging.`);
     }
 
   } catch (error) {
-    if (error instanceof Error) {
-      core.setFailed(`PR Guardian failed: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+
+    // Categorize errors
+    if (message.includes('ENOTFOUND') || message.includes('ECONNREFUSED')) {
+      core.setFailed(`PR Guardian: Network error — cannot reach API. Check your network connection. (${message})`);
+    } else if (message.includes('401') || message.includes('403') || message.includes('auth')) {
+      core.setFailed(`PR Guardian: Authentication failed — invalid API key. Check your DEEPSEEK_API_KEY. (${message})`);
+    } else if (message.includes('429') || message.includes('rate')) {
+      core.setFailed(`PR Guardian: Rate limited by AI provider. Please wait and re-run. (${message})`);
+    } else if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
+      core.setFailed(`PR Guardian: Request timed out. The diff may be too large or the API is slow. (${message})`);
     } else {
-      core.setFailed('PR Guardian failed with unknown error');
+      core.setFailed(`PR Guardian failed: ${message}`);
     }
   }
 }

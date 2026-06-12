@@ -54,7 +54,7 @@ export function parseDiff(
   maxSizeBytes: number
 ): FileChunk[] {
   const chunks: FileChunk[] = [];
-  const fileHeaderRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
+  const fileHeaderRegex = /^diff --git a\/(.+) b\/(.+)$/m;
 
   const files = diff.split(/(?=^diff --git )/m);
 
@@ -63,7 +63,7 @@ export function parseDiff(
   for (const file of files) {
     if (!file.trim()) continue;
 
-    const headerMatch = fileHeaderRegex.exec(file);
+    const headerMatch = file.match(fileHeaderRegex);
     if (!headerMatch || !headerMatch[1]) continue;
 
     const filename = headerMatch[1];

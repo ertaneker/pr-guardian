@@ -35649,104 +35649,178 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.analyzeDiff = analyzeDiff;
 const openai_1 = __importDefault(__nccwpck_require__(2583));
-const SYSTEM_PROMPT = `You are a senior software engineer conducting a thorough code review of a pull request.
-Your goal is to answer: "What could this PR break in production?"
-
-Analyze the diff and identify:
-1. BREAKING CHANGES: API changes, DB schema changes, config changes
-2. SECURITY: SQL injection, XSS, hardcoded secrets, auth bypass
-3. BUGS: Null pointers, type errors, race conditions, logic errors
-4. PERFORMANCE: N+1 queries, memory leaks, blocking I/O
-5. ARCHITECTURE: Circular deps, God classes, layer violations
-
-Respond ONLY with a valid JSON object (no markdown, no explanation outside JSON):
-{
-  "risk_score": 1-10,
-  "summary": "2-3 sentence executive summary of the overall risk",
-  "findings": [
-    {
-      "severity": "critical|warning|info",
-      "file": "filename",
-      "line": line_number,
-      "category": "security|performance|bug|architecture|style",
-      "title": "short title",
-      "description": "what the issue is and why it matters",
-      "suggestion": "how to fix it",
-      "code_snippet": "example fix (optional)"
-    }
-  ]
-}
-
-Important rules:
-- Only report REAL issues, not theoretical ones
-- Provide specific line numbers when possible
-- Be concise but thorough
-- Risk score 1-3: safe, minor changes. 4-6: moderate risk. 7-8: high risk. 9-10: critical, likely to break production
-- If there are no issues, return an empty findings array with risk_score 1`;
-async function analyzeDiff(chunks, apiKey, prContext) {
-    const client = new openai_1.default({
-        apiKey,
-        baseURL: 'https://api.deepseek.com/v1',
-    });
-    // Build the diff text from chunks
-    const diffText = chunks
-        .map((c) => `### ${c.filename} (${c.language})\n\`\`\`diff\n${c.patch}\n\`\`\``)
+const prompts_1 = __nccwpck_require__(6224);
+// --- AI Client ---
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
+const MODEL = 'deepseek-chat';
+const MAX_TOKENS = 4096;
+const TEMPERATURE = 0.1;
+const MAX_RETRIES = 2;
+const MAX_DIFF_CHARS = 45000;
+function chunkDiffForAI(chunks) {
+    return chunks
+        .map((c) => {
+        const header = `### ${c.filename} (${c.language}) [+${c.additions} -${c.deletions}]`;
+        return `${header}\n\`\`\`diff\n${c.patch}\n\`\`\``;
+    })
         .join('\n\n');
-    const prTitle = prContext?.title || 'N/A';
-    const prBody = prContext?.body || 'N/A';
-    const userMessage = `PR Title: ${prTitle}
-PR Description: ${prBody}
-
-Files changed: ${chunks.length}
-Total additions: ${chunks.reduce((s, c) => s + c.additions, 0)}
-Total deletions: ${chunks.reduce((s, c) => s + c.deletions, 0)}
-
-DIFF:
-${diffText}`;
-    // Truncate if too large for context window (DeepSeek has 64K context)
-    const maxChars = 50000;
-    const truncated = userMessage.length > maxChars
-        ? userMessage.substring(0, maxChars) + '\n\n[Diff truncated due to size]'
-        : userMessage;
-    const response = await client.chat.completions.create({
-        model: 'deepseek-chat',
-        messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: truncated },
+}
+function parseAIResponse(text) {
+    // Strip markdown code blocks, trim whitespace
+    let jsonStr = text
+        .replace(/```(?:json)?\s*/gi, '')
+        .replace(/```\s*$/gi, '')
+        .trim();
+    // Find JSON object boundaries if there's surrounding text
+    const jsonStart = jsonStr.indexOf('{');
+    const jsonEnd = jsonStr.lastIndexOf('}') + 1;
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        jsonStr = jsonStr.substring(jsonStart, jsonEnd);
+    }
+    const result = JSON.parse(jsonStr);
+    // Validate
+    if (typeof result.risk_score !== 'number' || result.risk_score < 1 || result.risk_score > 10) {
+        throw new Error(`Invalid risk_score: ${result.risk_score}`);
+    }
+    if (!Array.isArray(result.findings)) {
+        throw new Error('findings is not an array');
+    }
+    if (typeof result.summary !== 'string') {
+        throw new Error('summary is not a string');
+    }
+    // Validate each finding
+    for (const f of result.findings) {
+        if (!['critical', 'warning', 'info'].includes(f.severity)) {
+            f.severity = 'info';
+        }
+        if (!['security', 'performance', 'bug', 'architecture', 'style'].includes(f.category)) {
+            f.category = 'style';
+        }
+        f.file = f.file || 'unknown';
+        f.line = typeof f.line === 'number' ? f.line : 0;
+        f.title = f.title || 'Untitled finding';
+        f.description = f.description || 'No description';
+        f.suggestion = f.suggestion || 'No suggestion provided';
+    }
+    return result;
+}
+function buildFallbackResult(partialText) {
+    return {
+        risk_score: 5,
+        summary: 'AI analysis returned an unexpected format. Manual review recommended.',
+        findings: [
+            {
+                severity: 'info',
+                file: 'N/A',
+                line: 0,
+                category: 'style',
+                title: 'AI Response Parse Error',
+                description: `Could not parse AI response as JSON. Raw response (truncated): ${partialText.substring(0, 300)}`,
+                suggestion: 'Re-run the action or review the PR manually. If this persists, the diff may be too large or contain unparseable content.',
+                confidence: 100,
+            },
         ],
-        temperature: 0.1,
-        max_tokens: 4096,
+        model: MODEL,
+        tokens_used: 0,
+        analysis_time_ms: 0,
+    };
+}
+async function callDeepSeek(client, userMessage) {
+    const response = await client.chat.completions.create({
+        model: MODEL,
+        messages: [
+            { role: 'system', content: prompts_1.SYSTEM_PROMPT },
+            { role: 'user', content: userMessage },
+        ],
+        temperature: TEMPERATURE,
+        max_tokens: MAX_TOKENS,
     });
     const text = response.choices[0]?.message?.content || '';
-    // Parse JSON response
-    try {
-        const jsonStr = text
-            .replace(/```(?:json)?\s*/g, '')
-            .replace(/```\s*$/g, '')
-            .trim();
-        const result = JSON.parse(jsonStr);
-        if (typeof result.risk_score !== 'number' || !Array.isArray(result.findings)) {
-            throw new Error('Invalid AI response structure');
-        }
-        return result;
-    }
-    catch {
+    const tokens = response.usage?.total_tokens || 0;
+    return { text, tokens };
+}
+// --- Public API ---
+async function analyzeDiff(chunks, apiKey, prContext) {
+    const startTime = Date.now();
+    if (!chunks || chunks.length === 0) {
         return {
-            risk_score: 5,
-            summary: 'AI analysis produced an unexpected response format. Please review manually.',
-            findings: [
-                {
-                    severity: 'info',
-                    file: 'N/A',
-                    line: 0,
-                    category: 'style',
-                    title: 'AI Analysis Error',
-                    description: `The AI returned an unexpected format. Raw response (first 500 chars):\n\n${text.substring(0, 500)}`,
-                    suggestion: 'Please review the PR manually or re-run the action.',
-                },
-            ],
+            risk_score: 1,
+            summary: 'No files to analyze in this PR.',
+            findings: [],
+            model: MODEL,
+            tokens_used: 0,
+            analysis_time_ms: 0,
         };
     }
+    const client = new openai_1.default({
+        apiKey,
+        baseURL: DEEPSEEK_BASE_URL,
+        maxRetries: 1,
+        timeout: 60000,
+    });
+    const prTitle = prContext?.title || 'N/A';
+    const prBody = prContext?.body || 'N/A';
+    const languages = chunks.map((c) => c.language);
+    const languageContext = (0, prompts_1.buildLanguageContext)(languages);
+    const additions = chunks.reduce((s, c) => s + c.additions, 0);
+    const deletions = chunks.reduce((s, c) => s + c.deletions, 0);
+    let diffText = chunkDiffForAI(chunks);
+    // Truncate if too large
+    if (diffText.length > MAX_DIFF_CHARS) {
+        diffText = diffText.substring(0, MAX_DIFF_CHARS) +
+            '\n\n[Diff truncated — too large for analysis. Consider splitting this PR.]';
+    }
+    const userMessage = (0, prompts_1.buildUserPrompt)(diffText, prTitle, prBody, chunks.length, additions, deletions, languageContext);
+    let lastError = null;
+    let totalTokens = 0;
+    // Retry loop
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const { text, tokens } = await callDeepSeek(client, userMessage);
+            totalTokens = tokens;
+            const result = parseAIResponse(text);
+            result.model = MODEL;
+            result.tokens_used = totalTokens;
+            result.analysis_time_ms = Date.now() - startTime;
+            return result;
+        }
+        catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            // Don't retry on parse errors (prompt issue, not transient)
+            if (lastError.message.includes('Invalid risk_score') ||
+                lastError.message.includes('findings is not') ||
+                lastError.message.includes('summary is not')) {
+                return buildFallbackResult('');
+            }
+            // Last attempt — give up
+            if (attempt === MAX_RETRIES) {
+                break;
+            }
+            // Wait before retry (exponential backoff)
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+    }
+    // All retries exhausted
+    return {
+        risk_score: 5,
+        summary: `AI analysis failed after ${MAX_RETRIES + 1} attempts: ${lastError?.message || 'Unknown error'}. Please re-run or review manually.`,
+        findings: [
+            {
+                severity: 'info',
+                file: 'N/A',
+                line: 0,
+                category: 'style',
+                title: 'AI Analysis Failed',
+                description: `All ${MAX_RETRIES + 1} analysis attempts failed. Last error: ${lastError?.message || 'Unknown'}`,
+                suggestion: 'Check that the DEEPSEEK_API_KEY is valid and the DeepSeek API is available. Re-run the action.',
+                confidence: 100,
+            },
+        ],
+        model: MODEL,
+        tokens_used: 0,
+        analysis_time_ms: Date.now() - startTime,
+    };
 }
 
 
@@ -35872,7 +35946,10 @@ function formatComment(result, threshold) {
     }
     lines.push('---');
     lines.push('');
-    lines.push('<sub>🤖 Powered by [PR Guardian](https://github.com/ertaneker/pr-guardian) — AI code review for production safety</sub>');
+    const analysisTime = result.analysis_time_ms
+        ? `${(result.analysis_time_ms / 1000).toFixed(1)}s`
+        : 'N/A';
+    lines.push(`<sub>🤖 Powered by [PR Guardian](https://github.com/ertaneker/pr-guardian) — ${result.model || 'AI'} · ${result.tokens_used || 0} tokens · ${analysisTime}</sub>`);
     return lines.join('\n');
 }
 function formatCheckRunSummary(result) {
@@ -35935,13 +36012,13 @@ function isExcluded(filename, patterns) {
 }
 function parseDiff(diff, excludePatterns, maxSizeBytes) {
     const chunks = [];
-    const fileHeaderRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
+    const fileHeaderRegex = /^diff --git a\/(.+) b\/(.+)$/m;
     const files = diff.split(/(?=^diff --git )/m);
     let totalSize = 0;
     for (const file of files) {
         if (!file.trim())
             continue;
-        const headerMatch = fileHeaderRegex.exec(file);
+        const headerMatch = file.match(fileHeaderRegex);
         if (!headerMatch || !headerMatch[1])
             continue;
         const filename = headerMatch[1];
@@ -36062,26 +36139,253 @@ async function run() {
             issue_number: prNumber,
             body: commentBody,
         });
+        // Log analysis stats
+        core.info(`Model: ${results.model}`);
+        core.info(`Tokens: ${results.tokens_used}`);
+        core.info(`Time: ${(results.analysis_time_ms / 1000).toFixed(1)}s`);
+        core.info(`Findings: ${results.findings.length} (${results.findings.filter(f => f.severity === 'critical').length} critical, ${results.findings.filter(f => f.severity === 'warning').length} warnings, ${results.findings.filter(f => f.severity === 'info').length} info)`);
         // Update check run status
         const passed = results.risk_score <= riskThreshold;
-        core.info(`Risk Score: ${results.risk_score}/10 — ${passed ? 'PASSED' : 'FAILED'}`);
+        core.info(`Risk Score: ${results.risk_score}/10 (threshold: ${riskThreshold}) — ${passed ? 'PASSED ✅' : 'FAILED ❌'}`);
         if (passed) {
-            core.info('PR Guardian: Risk score within threshold. ✅');
+            core.info('PR Guardian: Risk score within threshold.');
         }
         else {
-            core.warning(`PR Guardian: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review the findings above.`);
+            core.warning(`PR Guardian: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review findings before merging.`);
         }
     }
     catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(`PR Guardian failed: ${error.message}`);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        // Categorize errors
+        if (message.includes('ENOTFOUND') || message.includes('ECONNREFUSED')) {
+            core.setFailed(`PR Guardian: Network error — cannot reach API. Check your network connection. (${message})`);
+        }
+        else if (message.includes('401') || message.includes('403') || message.includes('auth')) {
+            core.setFailed(`PR Guardian: Authentication failed — invalid API key. Check your DEEPSEEK_API_KEY. (${message})`);
+        }
+        else if (message.includes('429') || message.includes('rate')) {
+            core.setFailed(`PR Guardian: Rate limited by AI provider. Please wait and re-run. (${message})`);
+        }
+        else if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
+            core.setFailed(`PR Guardian: Request timed out. The diff may be too large or the API is slow. (${message})`);
         }
         else {
-            core.setFailed('PR Guardian failed with unknown error');
+            core.setFailed(`PR Guardian failed: ${message}`);
         }
     }
 }
 run();
+
+
+/***/ }),
+
+/***/ 6224:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// Prompt templates for PR Guardian — optimized for DeepSeek V3
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.LANGUAGE_SPECIFIC_RULES = exports.FEW_SHOT_EXAMPLE = exports.SYSTEM_PROMPT = void 0;
+exports.buildLanguageContext = buildLanguageContext;
+exports.buildUserPrompt = buildUserPrompt;
+exports.SYSTEM_PROMPT = `You are PR Guardian, a senior software engineer specialized in production safety.
+Your mission: identify what could break in production if this PR is merged.
+
+ANALYSIS CATEGORIES (check each):
+
+1. PRODUCTION BREAKING CHANGES:
+   - Database schema changes without migrations
+   - API response shape changes (added/removed/renamed fields)
+   - Config/environment variable changes not reflected in .env.example
+   - Dependency version bumps that include breaking changes
+
+2. SECURITY:
+   - SQL/NoSQL injection (string concatenation in queries)
+   - XSS (unsanitized output, innerHTML, dangerouslySetInnerHTML)
+   - Hardcoded secrets, tokens, keys, passwords
+   - Missing authentication/authorization checks
+   - Path traversal, command injection
+
+3. BUGS:
+   - Null/nil/undefined access without guards
+   - Type mismatches, unsafe casts, "any" types
+   - Race conditions (shared state without synchronization)
+   - Unhandled promise rejections, missing await
+   - Off-by-one errors, incorrect boundary checks
+   - Infinite loops or recursion without base case
+
+4. PERFORMANCE:
+   - Database queries inside loops (N+1 pattern)
+   - Missing index for new query patterns
+   - Large allocations without cleanup
+   - Synchronous I/O in async context
+   - Missing memoization/caching where appropriate
+
+5. ARCHITECTURE:
+   - Circular imports/dependencies
+   - Tight coupling between unrelated modules
+   - Missing error handling for external calls
+   - God objects/classes doing too many things
+
+RULES:
+- Only report REAL issues found in the diff. Do not invent hypothetical problems.
+- For each finding, provide the EXACT file and line number from the diff.
+- If there are no issues, return an empty findings array with risk_score 1.
+- Be specific: say "line 42: user.email might be null, accessing .toLowerCase() will throw" not "null safety issue".
+- If a dependency was updated, check if it's a major version bump (breaking change).
+- For database changes, check if a migration file was also added in the same PR.
+- For config changes, check if .env.example or equivalent was also updated.`;
+exports.FEW_SHOT_EXAMPLE = `EXAMPLE ANALYSIS:
+
+INPUT DIFF:
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -40,6 +40,8 @@ export async function login(req: Request) {
+   const { email, password } = req.body;
++  const user = await db.query("SELECT * FROM users WHERE email = '" + email + "'");
++  localStorage.setItem('session', JSON.stringify(user));
+   return { token: generateToken(user) };
+
+--- a/package.json
++++ b/package.json
+@@ -12,7 +12,7 @@
+-    "express": "^4.18.0",
++    "express": "^5.0.0",
+
+OUTPUT:
+{
+  "risk_score": 9,
+  "summary": "Critical: SQL injection vulnerability introduced via string concatenation in auth query. Session stored in localStorage (XSS risk). Express major version bump (v4 to v5) includes breaking changes. Deploying this will likely compromise user sessions and potentially break middleware.",
+  "findings": [
+    {
+      "severity": "critical",
+      "file": "src/auth.ts",
+      "line": 42,
+      "category": "security",
+      "title": "SQL Injection in login query",
+      "description": "User email is directly concatenated into SQL query string. An attacker can inject SQL via the email field to bypass authentication or extract data.",
+      "suggestion": "Use parameterized queries: db.query('SELECT * FROM users WHERE email = ?', [email])",
+      "code_snippet": "const user = await db.query('SELECT * FROM users WHERE email = ?', [email]);"
+    },
+    {
+      "severity": "critical",
+      "file": "src/auth.ts",
+      "line": 43,
+      "category": "security",
+      "title": "Session token stored in localStorage",
+      "description": "Storing session tokens in localStorage exposes them to XSS attacks. Any script on the page can read the token.",
+      "suggestion": "Use httpOnly, secure, SameSite cookies for session tokens instead of localStorage.",
+      "code_snippet": "res.cookie('session', token, { httpOnly: true, secure: true, sameSite: 'strict' });"
+    },
+    {
+      "severity": "warning",
+      "file": "package.json",
+      "line": 14,
+      "category": "architecture",
+      "title": "Express v5 major version bump",
+      "description": "Express v5 includes breaking changes: app.del() removed, app.param() signature changed, res.json() behavior changes. Middleware and route handlers may break silently.",
+      "suggestion": "Review the Express v5 migration guide. Test all route handlers and middleware. Consider keeping v4 until changes are verified."
+    }
+  ]
+}`;
+exports.LANGUAGE_SPECIFIC_RULES = {
+    TypeScript: `
+TypeScript-specific checks:
+- "any" type usage that bypasses type safety
+- "as" assertions that could hide type mismatches
+- Missing null checks on optional properties (user?.profile?.name)
+- Promise<void> without error handling
+- React hooks: missing useEffect dependencies, state mutation
+`,
+    JavaScript: `
+JavaScript-specific checks:
+- == instead of === (type coercion bugs)
+- Undeclared variables or implicit globals
+- Callback-based code without error handling
+- console.log left in production code
+`,
+    Python: `
+Python-specific checks:
+- Bare except: clauses swallowing exceptions
+- Mutable default arguments (def f(items=[]))
+- eval() or exec() usage with user input
+- f-string used in logging (potential injection)
+- Asyncio.create_task without error handling
+- Opening files without context manager (with)
+`,
+    Go: `
+Go-specific checks:
+- Unhandled error returns (val, _ := func())
+- Goroutine leaks (missing context cancellation)
+- Defer in loop body (resource accumulation)
+- Nil pointer dereference without guard
+- Mutex copy by value
+- time.Ticker without Stop()
+`,
+    Java: `
+Java-specific checks:
+- SQL string concatenation (PreparedStatement not used)
+- Resource leak (Stream, Connection not in try-with-resources)
+- Null return without @Nullable annotation
+- Thread safety (SimpleDateFormat shared across threads)
+- equals() vs == for String comparison
+`,
+    'C#': `
+C#-specific checks:
+- async void methods (should be async Task)
+- IDisposable not wrapped in using statement
+- LINQ multiple enumeration (ToList() missing)
+- NullReferenceException risk without null guard
+- HttpClient not reused (socket exhaustion)
+`,
+    Rust: `
+Rust-specific checks:
+- unwrap() or expect() in production code
+- unsafe block usage
+- Clone() in hot paths (performance)
+- Mutex lock held across await points
+- Missing error context (using ? without .context())
+`,
+    Ruby: `
+Ruby-specific checks:
+- SQL injection via string interpolation
+- Mass assignment vulnerability (no strong params)
+- N+1 query pattern (missing .includes())
+- Secrets in code (Rails.credentials not used)
+- eval() with user input
+`,
+    SQL: `
+SQL migration checks:
+- New columns without DEFAULT value on NOT NULL
+- Dropped columns referenced in application code
+- Index missing on new foreign key columns
+- Table locks (ALTER TABLE without CONCURRENTLY in Postgres)
+- Data type change that could truncate data
+`,
+};
+function buildLanguageContext(languages) {
+    const unique = [...new Set(languages)];
+    return unique
+        .map((lang) => exports.LANGUAGE_SPECIFIC_RULES[lang])
+        .filter(Boolean)
+        .join('\n');
+}
+function buildUserPrompt(diffText, prTitle, prBody, fileCount, additions, deletions, languageContext) {
+    return `PR Title: ${prTitle}
+PR Description: ${prBody || 'No description provided'}
+
+Statistics: ${fileCount} files, +${additions} -${deletions} lines
+
+${languageContext ? `LANGUAGE-SPECIFIC CHECKS:\n${languageContext}` : ''}
+
+DIFF TO REVIEW:
+${diffText}
+
+${exports.FEW_SHOT_EXAMPLE}
+
+Now analyze the DIFF TO REVIEW above following the same format. Output ONLY valid JSON (no markdown wrapping):`;
+}
 
 
 /***/ }),

@@ -8,11 +8,20 @@ export interface AnalysisFinding {
     description: string;
     suggestion: string;
     code_snippet?: string;
+    confidence?: number;
 }
 export interface AnalysisResult {
     risk_score: number;
     summary: string;
     findings: AnalysisFinding[];
+    model: string;
+    tokens_used: number;
+    analysis_time_ms: number;
+}
+export interface AIError {
+    code: string;
+    message: string;
+    retryable: boolean;
 }
 export declare function analyzeDiff(chunks: FileChunk[], apiKey: string, prContext?: {
     title?: string;

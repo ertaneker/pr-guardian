@@ -1,0 +1,11 @@
+﻿FAZ 5-8: Prompt optimizasyonu, hata yonetimi, test altyapisi
+
+- prompts.ts: DeepSeek optimize sistem promptu, few-shot ornek, 9 dil ozel kural
+- ai-client.ts: Retry logic (exponential backoff), fallback, token tracking
+- main.ts: Kategorize hata mesajlari (auth, network, rate-limit, timeout)
+- comment-formatter.ts: Model/token/sure istatistikleri footer
+- vitest.config.ts + 2 test dosyasi (17 test, hepsi geciyor)
+- diff-parser: Regex global flag bug fix (.match() ile)
+- Build: 2004KB, TypeScript strict hatasiz
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
