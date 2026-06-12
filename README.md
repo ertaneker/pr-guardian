@@ -66,7 +66,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: ertaneker/pr-guardian@main
+      - uses: ertaneker/pr-guardian/action@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
