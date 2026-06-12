@@ -1,46 +1,57 @@
 # PR GUARDIAN — DURUM TAKİBİ
 
-> **Son Güncelleme:** 2026-06-12 12:15
-> **Aktif Faz:** FAZ 0 — Proje Kurulumu ve Ortam Hazırlığı (son adım)
-> **Aktif Adım:** 0.4 — Anthropic API anahtarı bekleniyor
-> **Genel İlerleme:** %3
+> **Son Güncelleme:** 2026-06-12 12:45
+> **Aktif Faz:** FAZ 1 ✅ → FAZ 5/7'ye geçiliyor (prompt + hata yönetimi)
+> **Genel İlerleme:** %15
 
 ---
 
 ## FAZ DURUMLARI
 
-### FAZ 0: Proje Kurulumu ve Ortam Hazırlığı 🔄 (%80)
-- [x] 0.1 GitHub kullanıcı adı alındı (ertaneker)
-- [x] 0.1 Git init ve ilk commit
-- [x] 0.1 GitHub repo oluşturuldu ve push'landı
-- [x] 0.2 Node.js v24.14.1 + npm 11.11.0 mevcut
-- [x] 0.2 TypeScript kuruldu, ncc build çalışıyor
-- [x] 0.3 Action proje iskeleti (package.json, tsconfig, action.yml)
-- [x] 0.3 Kaynak kodlar (main.ts, diff-parser, ai-client, comment-formatter)
-- [x] 0.3 Build başarılı (dist/index.js 1788KB)
-- [x] 0.5 README.md, .gitignore, .env.example hazır
-- [ ] 0.4 Anthropic API anahtarı alınacak (Ertan)
+### FAZ 0: Proje Kurulumu ve Ortam Hazırlığı ✅ TAMAMLANDI
+- [x] Tüm adımlar tamam
 
-### FAZ 1: Pazar Araştırması ve Validasyon ⬜ (%0)
-### FAZ 2: GitHub Action Skeleton Geliştirme ⬜ (%0)
-### FAZ 3: Diff Parser ve Kod Analiz Altyapısı ⬜ (%0)
-### FAZ 4: AI Motor Entegrasyonu — Temel ⬜ (%0)
-### FAZ 5: Prompt Mühendisliği ve İyileştirme ⬜ (%0)
-### FAZ 6: PR Comment Formatlama ve Gönderim ⬜ (%0)
-### FAZ 7: Hata Yönetimi ve Edge Case'ler ⬜ (%0)
-### FAZ 8: Test Altyapısı ve Otomasyon ⬜ (%0)
-### FAZ 9: MVP Lansmanı — Ücretsiz Beta ⬜ (%0)
-### FAZ 10: GitHub Marketplace Listeleme ⬜ (%0)
-### FAZ 11: Akıllı Dil Desteği — Çoklu Dil Analizi ⬜ (%0)
-### FAZ 12: Framework-Aware Derinlemesine Analiz ⬜ (%0)
-### FAZ 13: "Production'da Ne Kırabilir?" Motoru ⬜ (%0)
-### FAZ 14: API Server Geliştirme ⬜ (%0)
-### FAZ 15: Kullanıcı Yönetimi ve Auth Sistemi ⬜ (%0)
-### FAZ 16: Monetizasyon — Pricing Tiers ve Billing ⬜ (%0)
-### FAZ 17: Dashboard ve Web Arayüzü ⬜ (%0)
-### FAZ 18: Büyüme ve Pazarlama Operasyonu ⬜ (%0)
-### FAZ 19: Enterprise Özellikler ve Skalama ⬜ (%0)
-### FAZ 20: Sürekli İyileştirme, Bakım ve Ölçekleme ⬜ (%0)
+### FAZ 1: Pazar Araştırması ve Validasyon ✅ TAMAMLANDI
+- [x] 1.1 Rakip analizi (9 rakip: CodeRabbit, Copilot, DeepSource, Qodo, Greptile, Sourcery, Codacy, SonarQube, CodeClimate)
+- [x] 1.2 Fiyatlandırma araştırması
+- [x] 1.3 ICP (hedef kitle profili)
+- [x] 1.4 USP: "Don't just review code, protect production"
+- [x] 1.5 PAZAR_ARASTIRMASI.md, FİYATLANDIRMA.md, ICP.md yazıldı
+
+### FAZ 2: GitHub Action Skeleton ✅ (FAZ 0'da yapıldı)
+- [x] 2.1-2.5 action.yml, main.ts, npm, build
+
+### FAZ 3: Diff Parser ✅ (FAZ 0'da yapıldı)
+- [x] 3.1-3.4 diff-parser.ts, dil tespiti, optimizasyon
+
+### FAZ 4: AI Motor Entegrasyonu ✅ (FAZ 0'da yapıldı)
+- [x] 4.1-4.5 ai-client.ts, DeepSeek API, JSON parsing
+
+### FAZ 5: Prompt Mühendisliği ve İyileştirme 🔄
+- [x] Temel prompt yazıldı (security, bug, performance, architecture, style)
+- [ ] 5.1 Kategori bazlı prompt tasarımı
+- [ ] 5.2 False positive azaltma
+- [ ] 5.3 Context-aware prompting
+- [ ] 5.4 Prompt A/B test altyapısı
+- [ ] 5.5 Prompt versiyonlama
+
+### FAZ 6: PR Comment Formatlama ✅ (FAZ 0'da yapıldı)
+- [x] 6.1-6.4 comment-formatter.ts, markdown template, inline yorumlar
+
+### FAZ 7: Hata Yönetimi ve Edge Case'ler ⬜
+### FAZ 8: Test Altyapısı ve Otomasyon ⬜
+### FAZ 9: MVP Lansmanı — Ücretsiz Beta ⬜
+### FAZ 10: GitHub Marketplace Listeleme ⬜
+### FAZ 11: Akıllı Dil Desteği — Çoklu Dil Analizi ⬜
+### FAZ 12: Framework-Aware Derinlemesine Analiz ⬜
+### FAZ 13: "Production'da Ne Kırabilir?" Motoru ⬜
+### FAZ 14: API Server Geliştirme ⬜
+### FAZ 15: Kullanıcı Yönetimi ve Auth Sistemi ⬜
+### FAZ 16: Monetizasyon — Pricing Tiers ve Billing ⬜
+### FAZ 17: Dashboard ve Web Arayüzü ⬜
+### FAZ 18: Büyüme ve Pazarlama Operasyonu ⬜
+### FAZ 19: Enterprise Özellikler ve Skalama ⬜
+### FAZ 20: Sürekli İyileştirme, Bakım ve Ölçekleme ⬜
 
 ---
 
