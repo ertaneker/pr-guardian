@@ -45,3 +45,7 @@ temp/
 # AI / LLM
 .cache/
 github-recovery-codes.txt
+
+# Private keys — NEVER commit
+*.pem
+*private-key*
