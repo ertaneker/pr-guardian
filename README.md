@@ -10,7 +10,7 @@ PR Guardian is a GitHub Action that uses AI to analyze pull requests. Unlike tra
 
 ## Key Features
 
-- AI-powered code review using Claude
+- AI-powered code review using DeepSeek
 - Breaking change detection
 - Database migration validation
 - Security vulnerability scanning
@@ -34,7 +34,7 @@ jobs:
       - uses: pr-guardian/action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
 
 ## Pricing

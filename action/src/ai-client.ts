@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type { FileChunk } from './diff-parser';
 
 export interface AnalysisFinding {
@@ -28,7 +28,7 @@ Analyze the diff and identify:
 4. PERFORMANCE: N+1 queries, memory leaks, blocking I/O
 5. ARCHITECTURE: Circular deps, God classes, layer violations
 
-Respond with a JSON object (no markdown code block):
+Respond ONLY with a valid JSON object (no markdown, no explanation outside JSON):
 {
   "risk_score": 1-10,
   "summary": "2-3 sentence executive summary of the overall risk",
@@ -50,14 +50,18 @@ Important rules:
 - Only report REAL issues, not theoretical ones
 - Provide specific line numbers when possible
 - Be concise but thorough
-- Risk score 1-3: safe, minor changes. 4-6: moderate risk. 7-8: high risk. 9-10: critical, likely to break production`;
+- Risk score 1-3: safe, minor changes. 4-6: moderate risk. 7-8: high risk. 9-10: critical, likely to break production
+- If there are no issues, return an empty findings array with risk_score 1`;
 
 export async function analyzeDiff(
   chunks: FileChunk[],
   apiKey: string,
   prContext?: { title?: string; body?: string }
 ): Promise<AnalysisResult> {
-  const anthropic = new Anthropic({ apiKey });
+  const client = new OpenAI({
+    apiKey,
+    baseURL: 'https://api.deepseek.com/v1',
+  });
 
   // Build the diff text from chunks
   const diffText = chunks
@@ -77,38 +81,38 @@ Total deletions: ${chunks.reduce((s, c) => s + c.deletions, 0)}
 DIFF:
 ${diffText}`;
 
-  // Truncate if too large for context window
-  const maxChars = 150000; // ~37K tokens safely under 200K limit
+  // Truncate if too large for context window (DeepSeek has 64K context)
+  const maxChars = 50000;
   const truncated = userMessage.length > maxChars
     ? userMessage.substring(0, maxChars) + '\n\n[Diff truncated due to size]'
     : userMessage;
 
-  const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+  const response = await client.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: truncated },
+    ],
+    temperature: 0.1,
     max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: truncated }],
   });
 
-  const text = msg.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
+  const text = response.choices[0]?.message?.content || '';
 
   // Parse JSON response
   try {
-    // Strip markdown code blocks if present
-    const jsonStr = text.replace(/```(?:json)?\s*/g, '').replace(/```\s*$/g, '').trim();
+    const jsonStr = text
+      .replace(/```(?:json)?\s*/g, '')
+      .replace(/```\s*$/g, '')
+      .trim();
     const result: AnalysisResult = JSON.parse(jsonStr);
 
-    // Validate
     if (typeof result.risk_score !== 'number' || !Array.isArray(result.findings)) {
       throw new Error('Invalid AI response structure');
     }
 
     return result;
   } catch {
-    // Fallback: return a basic result
     return {
       risk_score: 5,
       summary: 'AI analysis produced an unexpected response format. Please review manually.',
@@ -119,7 +123,7 @@ ${diffText}`;
           line: 0,
           category: 'style',
           title: 'AI Analysis Error',
-          description: `The AI returned an unexpected response format. Raw response:\n\n${text.substring(0, 500)}`,
+          description: `The AI returned an unexpected format. Raw response (first 500 chars):\n\n${text.substring(0, 500)}`,
           suggestion: 'Please review the PR manually or re-run the action.',
         },
       ],

@@ -7,7 +7,7 @@ import { formatComment, formatCheckRunSummary } from './comment-formatter';
 async function run(): Promise<void> {
   try {
     const githubToken = core.getInput('github_token', { required: true });
-    const anthropicApiKey = core.getInput('anthropic_api_key', { required: true });
+    const deepseekApiKey = core.getInput('deepseek_api_key', { required: true });
     const riskThreshold = parseInt(core.getInput('risk_threshold') || '7', 10);
     const excludePatterns = core.getInput('exclude_patterns') || '*.lock,*.lockb';
     const maxDiffSizeKB = parseInt(core.getInput('max_diff_size') || '100', 10);
@@ -45,7 +45,7 @@ async function run(): Promise<void> {
     core.info(`Parsed ${chunks.length} file(s) from diff`);
 
     // Analyze with AI
-    const results = await analyzeDiff(chunks, anthropicApiKey, github.context.payload.pull_request);
+    const results = await analyzeDiff(chunks, deepseekApiKey, github.context.payload.pull_request);
 
     // Post comment on PR
     const commentBody = formatComment(results, riskThreshold);
