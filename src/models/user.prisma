@@ -1,0 +1,12 @@
+﻿// User model - PRISM
+// This file was modified: new "phone" field added
+// But NO migration file was added!
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  phone     String?  // NEW FIELD — migration missing!
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
