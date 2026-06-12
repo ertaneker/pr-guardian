@@ -34,7 +34,14 @@
 - [x] 8.4 TypeScript strict type check hatasız
 - [x] 8.5 Build başarılı (2004KB)
 
-### FAZ 9: MVP Lansmanı — Ücretsiz Beta ⬜
+### FAZ 9: MVP Lansmanı ✅ Lansmana hazır
+- [x] Demo workflow (pr-guardian-demo.yml)
+- [x] Issue templates (bug report + feature request)
+- [x] USAGE.md kapsamlı kılavuz
+- [x] LAUNCH_PLAN.md (Reddit, HN, dev.to, Twitter içerikleri)
+- [x] README.md launch-ready
+- [ ] Reddit/HN/dev.to postları — Ertan atacak
+- [ ] DeepSeek API key GitHub secret olarak eklenecek
 ### FAZ 10: GitHub Marketplace Listeleme ⬜
 ### FAZ 11: Akıllı Dil Desteği — Çoklu Dil Analizi ⬜
 ### FAZ 12: Framework-Aware Derinlemesine Analiz ⬜
