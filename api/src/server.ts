@@ -6,6 +6,7 @@ import 'dotenv/config';
 import { healthRoutes } from './routes/health';
 import { analyzeRoutes } from './routes/analyze';
 import { userRoutes } from './routes/user';
+import { billingRoutes, webhookRoutes } from './routes/billing';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const JWT_SECRET = process.env.JWT_SECRET || 'pr-shield-dev-secret-change-in-production';
@@ -45,6 +46,8 @@ async function start() {
   await app.register(healthRoutes, { prefix: '/api/v1' });
   await app.register(analyzeRoutes, { prefix: '/api/v1' });
   await app.register(userRoutes, { prefix: '/api/v1' });
+  await app.register(billingRoutes, { prefix: '/api/v1' });
+  await app.register(webhookRoutes, { prefix: '/api/v1' });
 
   // Global error handler
   app.setErrorHandler((err, _request, reply) => {
