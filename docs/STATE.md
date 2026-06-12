@@ -46,8 +46,18 @@
 ### FAZ 11: Akıllı Dil Desteği — Çoklu Dil Analizi ⬜
 ### FAZ 12: Framework-Aware Derinlemesine Analiz ⬜
 ### FAZ 13: "Production'da Ne Kırabilir?" Motoru ⬜
-### FAZ 14: API Server Geliştirme ⬜
-### FAZ 15: Kullanıcı Yönetimi ve Auth Sistemi ⬜
+### FAZ 14: API Server Geliştirme ✅
+- [x] Fastify server (CORS, rate limiting, JWT, error handler)
+- [x] Routes: /health, /analyze, /analysis/:id, /usage, /user
+- [x] Auth middleware (API key + JWT)
+- [x] PR analyzer service (API bridge)
+- [x] DB connection (PostgreSQL + Drizzle ORM)
+- [x] Job queue (BullMQ + Redis)
+
+### FAZ 15: Kullanıcı Yönetimi ve Auth Sistemi ✅ (FAZ 14'te yapıldı)
+- [x] JWT authentication
+- [x] API key authentication
+- [x] User routes (profile, API key management)
 ### FAZ 16: Monetizasyon — Pricing Tiers ve Billing ⬜
 ### FAZ 17: Dashboard ve Web Arayüzü ⬜
 ### FAZ 18: Büyüme ve Pazarlama Operasyonu ⬜
