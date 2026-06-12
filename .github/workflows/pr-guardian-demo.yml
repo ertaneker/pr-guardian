@@ -1,0 +1,24 @@
+name: PR Guardian Demo
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    name: PR Guardian Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR Guardian AI Review
+        uses: ertaneker/pr-guardian@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          risk_threshold: '7'
+          exclude_patterns: '*.lock,*.lockb,*.json,*.pb.go,*.gen.*'
+          max_diff_size: '100'
