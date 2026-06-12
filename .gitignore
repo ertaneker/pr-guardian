@@ -9,6 +9,9 @@ web/.next/
 web/dist/
 # action/dist/ is NOT gitignored — GitHub Actions needs the compiled dist
 
+# Commit message temp files
+.git-commit-msg
+
 # Environment
 .env
 .env.local
