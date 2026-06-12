@@ -21,7 +21,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    core.info(`PR Guardian analyzing PR #${prNumber} in ${owner}/${repo}...`);
+    core.info(`PR Shield analyzing PR #${prNumber} in ${owner}/${repo}...`);
 
     // Fetch PR diff
     const response = await octokit.rest.pulls.get({
@@ -67,9 +67,9 @@ async function run(): Promise<void> {
     core.info(`Risk Score: ${results.risk_score}/10 (threshold: ${riskThreshold}) — ${passed ? 'PASSED ✅' : 'FAILED ❌'}`);
 
     if (passed) {
-      core.info('PR Guardian: Risk score within threshold.');
+      core.info('PR Shield: Risk score within threshold.');
     } else {
-      core.warning(`PR Guardian: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review findings before merging.`);
+      core.warning(`PR Shield: Risk score (${results.risk_score}) exceeds threshold (${riskThreshold}). Review findings before merging.`);
     }
 
   } catch (error) {
@@ -77,15 +77,15 @@ async function run(): Promise<void> {
 
     // Categorize errors
     if (message.includes('ENOTFOUND') || message.includes('ECONNREFUSED')) {
-      core.setFailed(`PR Guardian: Network error — cannot reach API. Check your network connection. (${message})`);
+      core.setFailed(`PR Shield: Network error — cannot reach API. Check your network connection. (${message})`);
     } else if (message.includes('401') || message.includes('403') || message.includes('auth')) {
-      core.setFailed(`PR Guardian: Authentication failed — invalid API key. Check your DEEPSEEK_API_KEY. (${message})`);
+      core.setFailed(`PR Shield: Authentication failed — invalid API key. Check your DEEPSEEK_API_KEY. (${message})`);
     } else if (message.includes('429') || message.includes('rate')) {
-      core.setFailed(`PR Guardian: Rate limited by AI provider. Please wait and re-run. (${message})`);
+      core.setFailed(`PR Shield: Rate limited by AI provider. Please wait and re-run. (${message})`);
     } else if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
-      core.setFailed(`PR Guardian: Request timed out. The diff may be too large or the API is slow. (${message})`);
+      core.setFailed(`PR Shield: Request timed out. The diff may be too large or the API is slow. (${message})`);
     } else {
-      core.setFailed(`PR Guardian failed: ${message}`);
+      core.setFailed(`PR Shield failed: ${message}`);
     }
   }
 }

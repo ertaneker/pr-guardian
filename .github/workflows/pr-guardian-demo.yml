@@ -1,4 +1,4 @@
-name: PR Guardian Demo
+name: PR Shield Demo
 
 on:
   pull_request:
@@ -11,10 +11,10 @@ permissions:
 
 jobs:
   review:
-    name: PR Guardian Analysis
+    name: PR Shield Analysis
     runs-on: ubuntu-latest
     steps:
-      - name: PR Guardian AI Review
+      - name: PR Shield AI Review
         uses: ertaneker/pr-guardian/action@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

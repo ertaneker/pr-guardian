@@ -1,4 +1,4 @@
-# PR Guardian
+# PR Shield
 
 **AI code review that answers: "What could this PR break in production?"**
 
@@ -7,11 +7,11 @@
 
 ---
 
-## Why PR Guardian?
+## Why PR Shield?
 
 Code review tools check style. Linters catch bugs. But **nobody asks the critical question**: "If I deploy this right now, what breaks in production?"
 
-PR Guardian is a GitHub Action that uses AI to analyze your pull requests and answer exactly that.
+PR Shield is a GitHub Action that uses AI to analyze your pull requests and answer exactly that.
 
 ### What It Catches
 
@@ -52,7 +52,7 @@ Repo → Settings → Secrets → Actions → `DEEPSEEK_API_KEY`
 `.github/workflows/pr-guardian.yml`:
 
 ```yaml
-name: PR Guardian
+name: PR Shield
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -74,7 +74,7 @@ jobs:
 
 ### 4. Open a PR
 
-PR Guardian will analyze it and post findings as a PR comment.
+PR Shield will analyze it and post findings as a PR comment.
 
 ---
 

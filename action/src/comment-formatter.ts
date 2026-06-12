@@ -48,7 +48,7 @@ export function formatComment(result: AnalysisResult, threshold: number): string
 
   const passed = result.risk_score <= threshold;
 
-  lines.push(`## ${riskEmoji(result.risk_score)} PR Guardian Report`);
+  lines.push(`## ${riskEmoji(result.risk_score)} PR Shield Report`);
   lines.push('');
   lines.push(`**Risk Score: ${result.risk_score}/10** — ${riskLabel(result.risk_score)} ${passed ? '✅' : '❌'}`);
   lines.push(`> Threshold: ${threshold}/10`);
@@ -122,7 +122,7 @@ export function formatComment(result: AnalysisResult, threshold: number): string
   const analysisTime = result.analysis_time_ms
     ? `${(result.analysis_time_ms / 1000).toFixed(1)}s`
     : 'N/A';
-  lines.push(`<sub>🤖 Powered by [PR Guardian](https://github.com/ertaneker/pr-guardian) — ${result.model || 'AI'} · ${result.tokens_used || 0} tokens · ${analysisTime}</sub>`);
+  lines.push(`<sub>🤖 Powered by [PR Shield](https://github.com/ertaneker/pr-guardian) — ${result.model || 'AI'} · ${result.tokens_used || 0} tokens · ${analysisTime}</sub>`);
 
   return lines.join('\n');
 }

@@ -15,7 +15,7 @@
 
 ## PROJE ÖZETİ
 
-- **Ürün:** GitHub PR Guardian Action — AI destekli PR kod inceleme
+- **Ürün:** GitHub PR Shield Action — AI destekli PR kod inceleme
 - **USP:** "Production'da ne kırabilir?" sorusuna cevap veren tek araç
 - **Platform:** GitHub Marketplace
 - **Gelir modeli:** Freemium SaaS ($29-299/ay)

@@ -15,7 +15,7 @@ describe('formatComment', () => {
   it('returns a formatted comment with safe score', () => {
     const comment = formatComment(baseResult, 7);
 
-    expect(comment).toContain('PR Guardian Report');
+    expect(comment).toContain('PR Shield Report');
     expect(comment).toContain('Risk Score: 3/10');
     expect(comment).toContain('SAFE');
     expect(comment).toContain('✅');
