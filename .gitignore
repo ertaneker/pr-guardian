@@ -4,10 +4,10 @@ node_modules/
 .pnp.js
 
 # Build
-action/dist/
 api/dist/
 web/.next/
 web/dist/
+# action/dist/ is NOT gitignored — GitHub Actions needs the compiled dist
 
 # Environment
 .env

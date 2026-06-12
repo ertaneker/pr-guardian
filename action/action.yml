@@ -1,0 +1,27 @@
+name: 'PR Guardian'
+description: 'AI-powered PR code review with production risk analysis'
+branding:
+  icon: 'shield'
+  color: 'blue'
+inputs:
+  github_token:
+    description: 'GitHub token for PR access'
+    required: true
+  anthropic_api_key:
+    description: 'Anthropic API key for Claude AI'
+    required: true
+  risk_threshold:
+    description: 'Minimum risk score to fail the check (1-10)'
+    required: false
+    default: '7'
+  exclude_patterns:
+    description: 'Glob patterns to exclude from analysis (comma-separated)'
+    required: false
+    default: '*.lock,*.lockb,*-lock.json,*.pb.go,*.gen.*'
+  max_diff_size:
+    description: 'Maximum diff size in KB to analyze'
+    required: false
+    default: '100'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
